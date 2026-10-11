@@ -172,6 +172,8 @@ report <- c("## Q6：純流動性月度策略", "",
   "母樣本仍按期末市值及完整三年資料選定，有存續與事後選樣偏誤；未模擬成交限制、價格衝擊及停牌，配息口徑也未確認。少量持股有集中風險，不能以累積報酬高就認定較穩健。",
   "comparison.csv 包含波動、最大回撤、資訊比率及平均日超額報酬雙尾 Newey–West 5 階 p 值；holdings.csv 可核對每次持股與訊號截止日。")
 report <- gsub("\\$ \\$", "$$", report)
+report <- gsub("^\\$\\$(.*)\\$\\$$", "```math\n\\1\n```", report)
+report <- gsub("(?<!\\$)\\$([^$\n]+)\\$(?!\\$)", "$`\\1`$", report, perl = TRUE)
 writeLines(enc2utf8(report), file.path(out, "README.md"), useBytes = TRUE)
 hw <- readLines(file.path(root, "HW2.md"), encoding = "UTF-8")
 q6_start <- grep("^## Q6", hw)[1]

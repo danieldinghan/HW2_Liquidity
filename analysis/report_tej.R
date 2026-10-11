@@ -125,5 +125,7 @@ report <- c("# HW2：股票流動性實證分析", "",
   "Modified 的下跌日風險斜率較高；成交量與週轉率風險的下跌日斜率較低，且由正轉負。Amihud 雖也有斜率方向改變，但差異 p=0.065，不能在 5% 水準認定不同。Modified 的解讀仍受間接價差與價格調整限制。", "")
 # Keep display-math delimiters intact without escaping them in long string literals.
 report <- gsub("\\$ \\$", "$$", report)
+report <- gsub("^\\$\\$(.*)\\$\\$$", "```math\n\\1\n```", report)
+report <- gsub("(?<!\\$)\\$([^$\n]+)\\$(?!\\$)", "$`\\1`$", report, perl = TRUE)
 writeLines(enc2utf8(c(report, q6)), hw_path, useBytes = TRUE)
 cat("PASS: Q1-Q5 report generated from current results; Q6 preserved.\n")
