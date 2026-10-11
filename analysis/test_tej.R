@@ -87,6 +87,47 @@ stopifnot(abs(coef(fit_down)["risk"] - reported_state$up) < 1e-9,
           abs(coef(fit_down)["risk:down"] - reported_state$difference) < 1e-9,
           all(z$logcap == log(z$cap)),
           all(is.na(z$down) | z$down == as.integer(z$market < 0)))
+# Independently rebuild every MA20 from the original official close series.
+index <- read.csv("data/taiex_daily.csv")
+index$date <- as.Date(index$date)
+index <- index[order(index$date), ]
+expected_ma <- rep(NA_real_, nrow(index))
+for (t in 20:nrow(index)) expected_ma[t] <- sum(index$close[seq.int(t - 19, t)]) / 20
+daily_ma <- read_result("q5_ma20_daily.csv")
+stopifnot(identical(as.Date(daily_ma$date), index$date),
+          isTRUE(all.equal(daily_ma$ma20, expected_ma)),
+          all(is.na(daily_ma$ma20[1:19])),
+          identical(daily_ma$down_ma20, as.integer(index$close < expected_ma)),
+          identical(daily_ma$in_sample, index$date %in% days))
+ma_states <- read_result("market_states_ma20.csv")
+ma_reg <- read_result("regressions_ma20.csv")
+stopifnot(nrow(ma_states) == 4, setequal(ma_states$measure, c("amihud", "modified", "volume", "turnover")),
+          all(abs(ma_states$down - ma_states$up - ma_states$difference) < 1e-10))
+z$down <- as.integer(index$close < expected_ma)[match(z$date, index$date)]
+zz <- z[complete.cases(z[c("return_pct", "risk", "down", "logcap", "industry", "market")]), ]
+fit_ma <- lm(return_pct ~ risk * down + logcap + factor(industry) + market, data = zz)
+reported_ma <- ma_states[ma_states$measure == "turnover", ]
+stopifnot(abs(coef(fit_ma)["risk"] - reported_ma$up) < 1e-9,
+          abs(coef(fit_ma)["risk:down"] - reported_ma$difference) < 1e-9,
+          nobs(fit_ma) == reported_ma$n,
+          length(unique(zz$date[zz$down == 0])) == reported_ma$strong_days,
+          length(unique(zz$date[zz$down == 1])) == reported_ma$weak_days)
+# Independently check the supplementary interaction's two-way cluster inference.
+X <- model.matrix(fit_ma); scores <- X * residuals(fit_ma)
+n <- nrow(X); k <- ncol(X)
+cluster_meat <- function(ids) {
+  sums <- rowsum(scores, ids); g <- nrow(sums)
+  crossprod(sums) * (g / (g - 1)) * ((n - 1) / (n - k))
+}
+B <- solve(crossprod(X))
+V <- B %*% (cluster_meat(zz$code) + cluster_meat(zz$date) -
+             crossprod(scores) * n / (n - k)) %*% B
+se_ma <- sqrt(max(0, V["risk:down", "risk:down"]))
+p_ma <- 2 * pt(-abs(coef(fit_ma)["risk:down"] / se_ma),
+               min(length(unique(zz$code)), length(unique(zz$date))) - 1)
+reported_term <- ma_reg[ma_reg$measure == "turnover" & ma_reg$term == "x:down", ]
+stopifnot(abs(se_ma - reported_term$se) < 1e-9, abs(p_ma - reported_ma$p) < 1e-9)
+cat("PASS: MA20 windows, warm-up/missing states, current-day timing, Q5 slopes, sample counts and cluster inference.\n")
 # Exercise only the export helper, without rerunning the analysis.
 for (e in parse("homework_TEJ.R", encoding = "UTF-8")) {
   if (is.call(e) && identical(e[[1]], as.name("<-")) &&
@@ -117,5 +158,8 @@ stopifnot(any(grepl("Industry_{i,T}", updated, fixed = TRUE)),
           any(grepl("\\log(MCap_{it})", updated, fixed = TRUE)),
           any(grepl("\\bar A_{i,t-1}^{(60)}", updated, fixed = TRUE)),
           any(grepl("w_{i,t-1}^{p}r_{it}", updated, fixed = TRUE)))
+stopifnot(any(grepl("Down_t^{MA20}", updated, fixed = TRUE)),
+          any(grepl("P_s^{TAIEX}", updated, fixed = TRUE)),
+          any(grepl("不是把個股每日報酬改成 20 日平均報酬", updated, fixed = TRUE)))
 cat("PASS: current Q1-Q6 report, repeatable generation and exact preservation of Q6.\n")
 cat("PASS: Q4/Q5 contemporaneous controls, lagged market weights and explicit Q6 signal timing.\n")
