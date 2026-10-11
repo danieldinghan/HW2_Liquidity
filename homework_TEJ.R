@@ -251,9 +251,24 @@ market <- vapply(date_rows, function(rows) {
 d$market <- unname(market[as.character(d$date)])
 # Contemporaneous regressions: current cap and down_t, not lagged controls.
 d$down <- as.integer(d$market < 0)
+# Supplementary Q5 state: today's official TAIEX close versus its trailing MA20.
+taiex <- read.csv(file.path(root, "data", "taiex_daily.csv"))
+taiex$date <- as.Date(taiex$date)
+taiex <- taiex[order(taiex$date), ]
+stopifnot(!anyNA(taiex$date), !anyDuplicated(taiex$date),
+          all(is.finite(taiex$close) & taiex$close > 0))
+taiex$ma20 <- NA_real_
+if (nrow(taiex) >= 20) for (t in 20:nrow(taiex)) {
+  taiex$ma20[t] <- mean(taiex$close[(t - 19):t])
+}
+taiex$down_ma20 <- as.integer(taiex$close < taiex$ma20)
+d$down_ma20 <- taiex$down_ma20[match(d$date, taiex$date)]
+taiex$in_sample <- taiex$date %in% all_dates
+save_table(taiex, "q5_ma20_daily.csv")
 d$return_pct <- d$r * 100
 d$logcap <- ifelse(d$cap > 0, log(d$cap), NA_real_)
 regressions <- states <- list()
+states_ma20 <- regressions_ma20 <- list()
 for (v in measures) for (kind in c("level", "risk")) {
   z <- d[c("code", "date", "return_pct", "logcap", "industry", "market", "down")]
   z$x <- if (kind == "level") d[[v]] else firm[[paste0(v, "_risk")]][match(d$code, firm$code)]
@@ -267,12 +282,28 @@ for (v in measures) for (kind in c("level", "risk")) {
     states[[v]] <- data.frame(measure = v, up = coef(fit_down)["x"],
                               down = coef(fit_down)["x"] + delta$estimate,
                               difference = delta$estimate, p = delta$p, n = nrow(z))
+    # Keep Q4 and the original Q5 sample unchanged; filter MA20 only here.
+    z$down <- taiex$down_ma20[match(z$date, taiex$date)]
+    z <- z[!is.na(z$down), ]
+    fit_ma20 <- lm(return_pct ~ x * down + logcap + factor(industry) + market, data = z)
+    b_ma20 <- cluster_table(fit_ma20, z)
+    b_ma20$measure <- v
+    regressions_ma20[[v]] <- b_ma20
+    delta_ma20 <- b_ma20[b_ma20$term == "x:down", ]
+    states_ma20[[v]] <- data.frame(measure = v, up = coef(fit_ma20)["x"],
+      down = coef(fit_ma20)["x"] + delta_ma20$estimate,
+      difference = delta_ma20$estimate, p = delta_ma20$p, n = nrow(z),
+      strong_days = length(unique(z$date[z$down == 0])),
+      weak_days = length(unique(z$date[z$down == 1])))
+    rm(fit_ma20)
     rm(fit_down)
   }
   rm(fit); invisible(gc())
 }
 regressions <- do.call(rbind, regressions)
 states <- do.call(rbind, states)
+states_ma20 <- do.call(rbind, states_ma20)
+regressions_ma20 <- do.call(rbind, regressions_ma20)
 q4 <- regressions[regressions$term == "x", ]
 q4_table <- data.frame(指標 = labels[match(q4$measure, measures)],
                        模型 = ifelse(q4$kind == "level", "當日流動性", "公司流動性風險"),
@@ -284,6 +315,10 @@ q5_table <- data.frame(指標 = labels[match(states$measure, measures)],
                        上漲日係數 = states$up, 下跌日係數 = states$down,
                        差異 = states$difference, p值 = p_fmt(states$p), 觀察數 = states$n)
 table_out(q5_table, 6)
+q5_ma20_table <- data.frame(指標 = labels[match(states_ma20$measure, measures)],
+  偏強期係數 = states_ma20$up, 偏弱期係數 = states_ma20$down,
+  差異 = states_ma20$difference, p值 = p_fmt(states_ma20$p), 觀察數 = states_ma20$n)
+table_out(q5_ma20_table, 6)
 
 # Save the current results without mixing them with earlier versions.
 save_table(sample, "sample.csv")
@@ -301,6 +336,9 @@ save_table(regressions, "regressions.csv")
 save_table(q4_table, "q4.csv")
 save_table(states, "market_states.csv")
 save_table(q5_table, "q5.csv")
+save_table(states_ma20, "market_states_ma20.csv")
+save_table(regressions_ma20, "regressions_ma20.csv")
+save_table(q5_ma20_table, "q5_ma20.csv")
 cat("Q1-Q5 tables and figures:", out, "\nRunning Q6...\n")
 source(file.path(root, "analysis", "strategy_search.R"), encoding = "UTF-8")
 source(file.path(root, "analysis", "report_tej.R"), encoding = "UTF-8")

@@ -26,9 +26,13 @@ size <- read_result("q1_size.csv")
 risk <- read_result("q3_risk.csv")
 q4 <- read_result("q4.csv")
 q5 <- read_result("q5.csv")
+q5_ma20 <- read_result("q5_ma20.csv")
+state_ma20 <- read_result("market_states_ma20.csv")
+ma20_daily <- read_result("q5_ma20_daily.csv")
 reg <- read_result("regressions.csv")
 settings <- read_result("settings.csv")
 stopifnot(nrow(sample) == 500, settings$roll_window == 30, nrow(q4) == 8, nrow(q5) == 4)
+stopifnot(nrow(q5_ma20) == 4, nrow(state_ma20) == 4)
 translate <- c(amihud = "Amihud", modified = "Modified*", volume = "成交量", turnover = "週轉率")
 conclusions <- function(kind) {
   z <- reg[reg$term == "x" & reg$kind == kind, ]
@@ -41,6 +45,11 @@ state <- read_result("market_states.csv")
 state_conclusion <- paste(vapply(seq_len(nrow(state)), function(j) {
   paste0(translate[state$measure[j]], "的上下跌日斜率差異", if (state$p[j] < .05) "達" else "未達", " 5% 顯著水準")
 }, character(1)), collapse = "；")
+ma20_conclusion <- paste(vapply(seq_len(nrow(state_ma20)), function(j) {
+  paste0(translate[state_ma20$measure[j]], "的偏強／偏弱期斜率差異",
+         if (state_ma20$p[j] < .05) "達" else "未達", " 5% 顯著水準")
+}, character(1)), collapse = "；")
+ma20_sample <- ma20_daily[ma20_daily$in_sample & !is.na(ma20_daily$down_ma20), ]
 hw_path <- file.path(root, "HW2.md")
 old <- readLines(hw_path, encoding = "UTF-8")
 q6_start <- grep("^## Q6", old)[1]
@@ -122,7 +131,18 @@ report <- c("# HW2：股票流動性實證分析", "",
   "$$r_{it}^{(\\%)}=a+bRisk_i^{L,\\mathrm{full}}+eDown_t+f(Risk_i^{L,\\mathrm{full}}\\times Down_t)+c\\log(MCap_{it})+dR_{mt}+\\sum_{k\\ne k_0}\\gamma_k I(Industry_{i,T}=k)+\\varepsilon_{it}.$ $", "",
   "上漲組（包含零報酬日）的風險斜率為 $b$，下跌日為 $b+f$，差異為 $f$；檢驗 $H_0:f=0$。表中 p 值檢驗兩種市況斜率是否不同，不是分別檢驗各斜率。控制變數與雙向群聚標準誤同 Q4。", "",
   md_table(q5), paste0(state_conclusion, "。"), "",
-  "Modified 的下跌日風險斜率較高；成交量與週轉率風險的下跌日斜率較低，且由正轉負。Amihud 雖也有斜率方向改變，但差異 p=0.065，不能在 5% 水準認定不同。Modified 的解讀仍受間接價差與價格調整限制。", "")
+  "Modified 的下跌日風險斜率較高；成交量與週轉率風險的下跌日斜率較低，且由正轉負。Amihud 雖也有斜率方向改變，但差異 p=0.065，不能在 5% 水準認定不同。Modified 的解讀仍受間接價差與價格調整限制。", "",
+  "### 補充：用 TAIEX 20 日均線區分市場趨勢", "",
+  "主結果保留當日漲跌。補充檢驗改用官方 TAIEX 收盤價相對最近 20 個交易日均線，區分偏強與偏弱趨勢；不是把個股每日報酬改成 20 日平均報酬。", "",
+  "$$MA_{20,t}=\\frac{1}{20}\\sum_{s=t-19}^{t}P_s^{TAIEX},\\qquad Down_t^{MA20}=I(P_t^{TAIEX}<MA_{20,t}).$$", "",
+  "收盤低於均線為偏弱（1），等於或高於為偏強（0）。均線包含當日收盤，沒有使用未來資料；這是當期關係分析，不是開盤前已知的預測訊號。20 日指交易日，不是日曆日；資料不足完整 20 日時留缺值，不補零。", "",
+  paste0("以現有官方指數資料計算，樣本中有完整均線的期間為 ", min(ma20_sample$date), " 至 ", max(ma20_sample$date),
+    "，共 ", nrow(ma20_sample), " 個交易日：偏強 ", sum(ma20_sample$down_ma20 == 0), " 日、偏弱 ", sum(ma20_sample$down_ma20 == 1),
+    " 日；其餘 ", max(coverage$days) - nrow(ma20_sample), " 個樣本交易日不納入補充模型。"), "",
+  "$$r_{it}^{(\\%)}=a+bRisk_i^{L,\\mathrm{full}}+eDown_t^{MA20}+f(Risk_i^{L,\\mathrm{full}}\\times Down_t^{MA20})+c\\log(MCap_{it})+dR_{mt}+\\sum_{k\\ne k_0}\\gamma_k I(Industry_{i,T}=k)+\\varepsilon_{it}.$ $", "",
+  "每日個股報酬、公司全期風險、控制變數及公司／交易日雙向群聚標準誤均與主模型相同。只有市況分類改用官方 TAIEX；控制項 $R_{mt}$ 仍是原本的樣本市值加權市場代理，沒有一併替換。偏強期斜率為 $b$，偏弱期為 $b+f$，檢驗 $H_0:f=0$。", "",
+  md_table(q5_ma20), paste0(ma20_conclusion, "。"), "",
+  "本表回答的是不同市場趨勢下的關係，不是單日漲跌下的關係。與主表比較時，市況定義、判斷所用市場序列及可用日期都不同，因此結果差異不能單獨歸因於均線平滑效果。這是補充比較，不取代主結果。", "")
 # Keep display-math delimiters intact without escaping them in long string literals.
 report <- gsub("\\$ \\$", "$$", report)
 report <- gsub("^\\$\\$(.*)\\$\\$$", "```math\n\\1\n```", report)
