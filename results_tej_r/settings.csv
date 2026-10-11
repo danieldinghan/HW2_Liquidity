@@ -1,0 +1,2 @@
+﻿"roll_window","volume_unit","kyle_noise_proxy","kyle_asset_proxy","kyle_formula","kyle_scope"
+30,"million shares","SD(daily trading volume), full sample","SD(daily decimal return), full sample","sigma_a^2 / sigma_u^2; lecture p18","Q1 only; constant firm proxy has no daily time-series risk"

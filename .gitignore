@@ -1,0 +1,10 @@
+data/tej_daily.csv
+.env
+.env.*
+.Rhistory
+.RData
+.Rproj.user/
+__pycache__/
+*.pyc
+.github-export/
+results_tej_r/q3_returns_daily.csv
